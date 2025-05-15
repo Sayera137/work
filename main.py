@@ -1,44 +1,46 @@
 import os
 import telebot
-from flask import Flask
-import threading
+import requests
 
+# টেলিগ্রাম বট টোকেন ও AI API কী পরিবেশ ভেরিয়েবল থেকে নিচ্ছে
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
+AI_API_KEY = os.environ.get("AI_API_KEY")
+
 bot = telebot.TeleBot(BOT_TOKEN)
 
-CHARACTER = "তুমি একজন এলফ রাজকুমারী, তুমি খুব কোমল, কল্পনার জগতের মতো কথা বলো।"
+# কামুক ফ্যান্টাসি চরিত্র নির্দেশনা
+CHARACTER = """
+তুমি একজন কামুক এলফ রাজকুমারী, তুমি মিষ্টি ও রহস্যময়। তোমার ভাষা খুবই কোমল, রোমান্টিক, আর আকর্ষণীয়।
+তুমি সবসময় মুগ্ধ করার মতো কথা বলো, যেন প্রতিটি বাক্য ফ্যান্টাসির মতো লাগে।
+"""
 
-# Flask web server for Render Web Service
-app = Flask(__name__)
+# OpenRouter API দিয়ে AI রেসপন্স আনা
+def get_ai_response(user_input):
+    headers = {
+        "Authorization": f"Bearer {AI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "model": "nous-hermes-llama2",  # NSFW ও কামুক কথোপকথনের জন্য ভালো
+        "messages": [
+            {"role": "system", "content": CHARACTER},
+            {"role": "user", "content": user_input}
+        ]
+    }
+    try:
+        res = requests.post("https://openrouter.ai/api/v1/chat/completions", json=data, headers=headers)
+        reply = res.json()["choices"][0]["message"]["content"]
+        return reply.strip()
+    except Exception as e:
+        return "হায়! আমি এখন একটু বিভ্রান্ত, পরে আবার বলো, প্রিয়।"
 
-@app.route('/')
-def home():
-    return "Bot is running."
-
-# AI response function (fake for now)
-def generate_fake_response(user_input):
-    return f"আমি তোমার কথায় মুগ্ধ, প্রিয়। আরও বলো..."
-
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    bot.reply_to(message, "স্বাগতম! Fantasy chat করতে /chat লিখুন।")
-
-@bot.message_handler(commands=['chat'])
-def handle_chat(message):
-    user_input = message.text.replace("/chat", "").strip()
-    if not user_input:
-        bot.reply_to(message, "দয়া করে /chat এর পর কিছু লিখুন।")
-        return
-
-    prompt = f"Character: {CHARACTER}\nUser: {user_input}\nAI:"
-    response = generate_fake_response(user_input)
+# যেকোনো মেসেজে রিপ্লাই করে
+@bot.message_handler(func=lambda message: True)
+def reply_to_message(message):
+    user_input = message.text.strip()
+    bot.send_chat_action(message.chat.id, 'typing')
+    response = get_ai_response(user_input)
     bot.reply_to(message, response)
 
-# Run bot in a separate thread
-def run_bot():
-    print("Bot is polling...")
-    bot.polling()
-
-if __name__ == "__main__":
-    threading.Thread(target=run_bot).start()
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+print("Fantasy AI bot is running...")
+bot.polling()
